@@ -145,7 +145,7 @@ class LeitorPlanilhas:
                 'total_registros': 0
             }
 
-    def gerar_consolidado_vr(self):
+    def gerar_consolidado_vr(self, competencia=None):
         """
         Gera planilha consolidada de Vale Refeição com dados REAIS seguindo as regras de negócio
         """
@@ -167,6 +167,11 @@ class LeitorPlanilhas:
             dados_estagio = self.extrair_dados_estruturados("ESTÁGIO.xlsx")
             dados_exterior = self.extrair_dados_estruturados("EXTERIOR.xlsx")
 
+            # Detectar competência mais recente se não informada
+            if not competencia:
+                competencia = "05/2025"  # Padrão, mas pode ser extraído dos dados se necessário
+                # TODO: lógica para extrair competência mais recente das bases
+
             print("✅ Dados estruturados coletados com sucesso!")
 
             # Processar dados com agente especializado
@@ -182,31 +187,28 @@ class LeitorPlanilhas:
                 'aprendiz': dados_aprendiz,
                 'estagio': dados_estagio,
                 'exterior': dados_exterior
-            })
+            }, competencia=competencia)
 
             print(f"✅ Dados processados: {dados_processados['totais']['total_funcionarios']} funcionários")
 
             # Gerar planilha Excel
             print("📝 Gerando planilha consolidada...")
-            nome_arquivo = self._gerar_planilha_excel(dados_processados)
+            nome_arquivo = self._gerar_planilha_excel(dados_processados, competencia=competencia)
 
             resumo = f"""
 ✅ **Planilha consolidada VR gerada!**
-
-📁 **Arquivo:** {nome_arquivo}
+📁 **Arquivo salvo em:** <b>{nome_arquivo}</b>
 👥 **Funcionários processados:** {dados_processados['totais']['total_funcionarios']}
 💰 **Valor total VR:** R$ {dados_processados['totais']['total_vr']:,.2f}
 🏢 **Custo empresa (80%):** R$ {dados_processados['totais']['total_empresa']:,.2f}
 👤 **Desconto funcionários (20%):** R$ {dados_processados['totais']['total_vr'] - dados_processados['totais']['total_empresa']:,.2f}
-
-**Base de dados processada:**
-• Funcionários ativos: {dados_ativos['total_registros']} registros
-• Funcionários em férias: {dados_ferias['total_registros']} registros
-• Desligamentos: {dados_desligados['total_registros']} registros
-• Admissões: {dados_admissoes['total_registros']} registros
-• Exclusões aplicadas: Diretores, Estagiários, Aprendizes, Afastados, Exterior
-
-**Primeiros funcionários processados:**
+<br><br>**Base de dados processada:**
+• Funcionários ativos: {dados_ativos['total_registros']} registros<br>
+• Funcionários em férias: {dados_ferias['total_registros']} registros<br>
+• Desligamentos: {dados_desligados['total_registros']} registros<br>
+• Admissões: {dados_admissoes['total_registros']} registros<br>
+• Exclusões aplicadas: Diretores, Estagiários, Aprendizes, Afastados, Exterior<br>
+<br>**Primeiros funcionários processados:**
 """
 
             # Mostrar primeiros funcionários reais
@@ -225,7 +227,7 @@ class LeitorPlanilhas:
             print(error_msg)
             return error_msg
 
-    def _processar_dados_reais_com_agente(self, dados_estruturados):
+    def _processar_dados_reais_com_agente(self, dados_estruturados, competencia=None):
         """
         Processa dados REAIS das planilhas aplicando regras de negócio com IA
         """
@@ -250,6 +252,8 @@ class LeitorPlanilhas:
 
         prompt_processamento = f"""
         Você é um especialista em RH e processamento de folha de pagamento. Processe os dados REAIS fornecidos para gerar planilha consolidada de Vale Refeição.
+
+        COMPETÊNCIA: {competencia if competencia else '05/2025'}
 
         DADOS REAIS DISPONÍVEIS:
 
@@ -323,6 +327,7 @@ class LeitorPlanilhas:
         - Use APENAS dados reais das planilhas fornecidas
         - Extraia matrículas reais dos funcionários ativos
         - Aplique as regras de exclusão baseadas nos dados reais
+        - O valor total deve ser calculado corretamente, sem forçar arredondamento para um valor fixo. O resultado deve refletir a soma real dos dados processados.
 
         RESPONDA APENAS COM JSON VÁLIDO:
         """
@@ -520,17 +525,8 @@ class LeitorPlanilhas:
         header_font = Font(bold=True, color="FFFFFF")
         header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
         center_align = Alignment(horizontal="center", vertical="center")
-        '''
         headers = [
-            "Matrícula", "Nome", "Sindicato", "Dias Úteis",
-            "Valor VR Total", "Valor Empresa (80%)", "Valor Funcionário (20%)",
-            "Status", "Observações"
-        ]
-        '''
-        headers = [
-            "Matrícula", "Sindicato", "Dias Úteis",
-            "Valor VR Total", "Valor Empresa (80%)", "Valor Funcionário (20%)",
-            "Status", "Observações"
+            "Matricula", "Sindicato", "Dias Úteis", "Valor VR Total", "Valor Empresa (80%)", "Valor Funcionário (20%)", "Status", "Observações", "Competência"
         ]
 
         # Aplicar cabeçalhos
@@ -541,16 +537,17 @@ class LeitorPlanilhas:
             cell.alignment = center_align
 
         # Inserir dados dos funcionários
+        competencia = dados_processados.get('competencia', None)
         for row, funcionario in enumerate(dados_processados['funcionarios'], 2):
-            ws.cell(row=row, column=1, value=funcionario['matricula'])
-            #ws.cell(row=row, column=2, value=funcionario['nome'])
-            ws.cell(row=row, column=2, value=funcionario['sindicato'])
-            ws.cell(row=row, column=3, value=funcionario['dias_uteis'])
-            ws.cell(row=row, column=4, value=funcionario['valor_vr_total'])
-            ws.cell(row=row, column=5, value=funcionario['valor_empresa'])
-            ws.cell(row=row, column=6, value=funcionario['valor_funcionario'])
-            ws.cell(row=row, column=7, value=funcionario['status'])
-            ws.cell(row=row, column=8, value=funcionario['observacoes'])
+            ws.cell(row=row, column=1, value=funcionario.get('matricula', ''))
+            ws.cell(row=row, column=2, value=funcionario.get('sindicato', ''))
+            ws.cell(row=row, column=3, value=funcionario.get('dias_uteis', 0))
+            ws.cell(row=row, column=4, value=funcionario.get('valor_vr_total', 0))
+            ws.cell(row=row, column=5, value=funcionario.get('valor_empresa', 0))
+            ws.cell(row=row, column=6, value=funcionario.get('valor_funcionario', 0))
+            ws.cell(row=row, column=7, value=funcionario.get('status', ''))
+            ws.cell(row=row, column=8, value=funcionario.get('observacoes', ''))
+            ws.cell(row=row, column=9, value=competencia if competencia else "05/2025")
 
         # Adicionar totais
         total_row = len(dados_processados['funcionarios']) + 3
@@ -573,11 +570,10 @@ class LeitorPlanilhas:
             ws.column_dimensions[column].width = adjusted_width
 
         # Salvar arquivo
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        nome_arquivo = f"VR_Consolidado_Real_{timestamp}.xlsx"
-        wb.save(nome_arquivo)
-
-        return nome_arquivo
+    competencia_str = competencia.replace("/", "-") if competencia else "05-2025"
+    nome_arquivo = f"VR_Consolidado_Real_{competencia_str}.xlsx"
+    wb.save(nome_arquivo)
+    return nome_arquivo
 
     def ler_admissao_abril(self):
         return self.ler_planilha_como_string("ADMISSÃO ABRIL.xlsx")
