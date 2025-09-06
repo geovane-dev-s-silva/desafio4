@@ -13,8 +13,11 @@ import re
 
 load_dotenv()
 
+
 class LeitorPlanilhas:
-    def __init__(self, caminho_pasta="./", caminho_pasta_pdfs="./pdfs", api_key_gemini=None):
+    def __init__(
+        self, caminho_pasta="./", caminho_pasta_pdfs="./pdfs", api_key_gemini=None
+    ):
         """
         Inicializa o leitor com o caminho da pasta onde estão as planilhas e PDFs
         """
@@ -31,21 +34,16 @@ class LeitorPlanilhas:
             "ESTÁGIO.xlsx",
             "EXTERIOR.xlsx",
             "FÉRIAS.xlsx",
-            "VR MENSAL 05.2025.xlsx"
+            "VR MENSAL 05.2025.xlsx",
         ]
 
         # PDFs disponíveis
-        self.pdfs = [
-            "SINDPD RJ.pdf",
-            "SINDPD SP.pdf",
-            "SINDPD RS.pdf",
-            "SITEPD PR.pdf"
-        ]
+        self.pdfs = ["SINDPD RJ.pdf", "SINDPD SP.pdf", "SINDPD RS.pdf", "SITEPD PR.pdf"]
 
         # Configurar Gemini
         if api_key_gemini:
             genai.configure(api_key=api_key_gemini)
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            self.model = genai.GenerativeModel("gemini-1.5-flash")
         else:
             self.model = None
 
@@ -88,10 +86,10 @@ class LeitorPlanilhas:
             if not os.path.exists(caminho_completo):
                 print(f"Arquivo não encontrado: {caminho_completo}")
                 return {
-                    'headers': [],
-                    'dados': [],
-                    'erro': f'Arquivo não encontrado: {nome_arquivo}',
-                    'total_registros': 0
+                    "headers": [],
+                    "dados": [],
+                    "erro": f"Arquivo não encontrado: {nome_arquivo}",
+                    "total_registros": 0,
                 }
 
             workbook = openpyxl.load_workbook(caminho_completo, data_only=True)
@@ -100,28 +98,36 @@ class LeitorPlanilhas:
             if sheet.max_row < 2:
                 print(f"Planilha {nome_arquivo} está vazia ou só tem cabeçalhos")
                 return {
-                    'headers': [],
-                    'dados': [],
-                    'erro': f'Planilha {nome_arquivo} está vazia',
-                    'total_registros': 0
+                    "headers": [],
+                    "dados": [],
+                    "erro": f"Planilha {nome_arquivo} está vazia",
+                    "total_registros": 0,
                 }
 
             # Obter cabeçalhos (primeira linha)
             headers = []
-            primeira_linha = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True))
+            primeira_linha = next(
+                sheet.iter_rows(min_row=1, max_row=1, values_only=True)
+            )
             for cell in primeira_linha:
-                headers.append(str(cell).strip() if cell is not None else f"Col_{len(headers)}")
+                headers.append(
+                    str(cell).strip() if cell is not None else f"Col_{len(headers)}"
+                )
 
             print(f"Headers encontrados em {nome_arquivo}: {headers}")
 
             # Extrair dados
             dados = []
-            for row_num, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), 2):
+            for row_num, row in enumerate(
+                sheet.iter_rows(min_row=2, values_only=True), 2
+            ):
                 if any(cell is not None and str(cell).strip() for cell in row):
                     linha_dict = {}
                     for i, cell in enumerate(row):
                         header_name = headers[i] if i < len(headers) else f"Col_{i}"
-                        linha_dict[header_name] = str(cell).strip() if cell is not None else ""
+                        linha_dict[header_name] = (
+                            str(cell).strip() if cell is not None else ""
+                        )
                     dados.append(linha_dict)
 
                     # Debug: mostrar primeiros registros
@@ -130,20 +136,11 @@ class LeitorPlanilhas:
 
             print(f"Total de registros extraídos de {nome_arquivo}: {len(dados)}")
 
-            return {
-                'headers': headers,
-                'dados': dados,
-                'total_registros': len(dados)
-            }
+            return {"headers": headers, "dados": dados, "total_registros": len(dados)}
 
         except Exception as e:
             print(f"Erro ao processar {nome_arquivo}: {str(e)}")
-            return {
-                'headers': [],
-                'dados': [],
-                'erro': str(e),
-                'total_registros': 0
-            }
+            return {"headers": [], "dados": [], "erro": str(e), "total_registros": 0}
 
     def gerar_consolidado_vr(self, competencia=None):
         """
@@ -160,7 +157,9 @@ class LeitorPlanilhas:
             dados_ferias = self.extrair_dados_estruturados("FÉRIAS.xlsx")
             dados_desligados = self.extrair_dados_estruturados("DESLIGADOS.xlsx")
             dados_admissoes = self.extrair_dados_estruturados("ADMISSÃO ABRIL.xlsx")
-            dados_base_sindicato = self.extrair_dados_estruturados("Base sindicato x valor.xlsx")
+            dados_base_sindicato = self.extrair_dados_estruturados(
+                "Base sindicato x valor.xlsx"
+            )
             dados_dias_uteis = self.extrair_dados_estruturados("Base dias uteis.xlsx")
             dados_afastamentos = self.extrair_dados_estruturados("AFASTAMENTOS.xlsx")
             dados_aprendiz = self.extrair_dados_estruturados("APRENDIZ.xlsx")
@@ -169,31 +168,40 @@ class LeitorPlanilhas:
 
             # Detectar competência mais recente se não informada
             if not competencia:
-                competencia = "05/2025"  # Padrão, mas pode ser extraído dos dados se necessário
+                competencia = (
+                    "05/2025"  # Padrão, mas pode ser extraído dos dados se necessário
+                )
                 # TODO: lógica para extrair competência mais recente das bases
 
             print("✅ Dados estruturados coletados com sucesso!")
 
             # Processar dados com agente especializado
             print("🤖 Processando com agente especializado...")
-            dados_processados = self._processar_dados_reais_com_agente({
-                'ativos': dados_ativos,
-                'ferias': dados_ferias,
-                'desligados': dados_desligados,
-                'admissoes': dados_admissoes,
-                'base_sindicato': dados_base_sindicato,
-                'dias_uteis': dados_dias_uteis,
-                'afastamentos': dados_afastamentos,
-                'aprendiz': dados_aprendiz,
-                'estagio': dados_estagio,
-                'exterior': dados_exterior
-            }, competencia=competencia)
+            dados_processados = self._processar_dados_reais_com_agente(
+                {
+                    "ativos": dados_ativos,
+                    "ferias": dados_ferias,
+                    "desligados": dados_desligados,
+                    "admissoes": dados_admissoes,
+                    "base_sindicato": dados_base_sindicato,
+                    "dias_uteis": dados_dias_uteis,
+                    "afastamentos": dados_afastamentos,
+                    "aprendiz": dados_aprendiz,
+                    "estagio": dados_estagio,
+                    "exterior": dados_exterior,
+                },
+                competencia=competencia,
+            )
 
-            print(f"✅ Dados processados: {dados_processados['totais']['total_funcionarios']} funcionários")
+            print(
+                f"✅ Dados processados: {dados_processados['totais']['total_funcionarios']} funcionários"
+            )
 
             # Gerar planilha Excel
             print("📝 Gerando planilha consolidada...")
-            nome_arquivo = self._gerar_planilha_excel(dados_processados, competencia=competencia)
+            nome_arquivo = self._gerar_planilha_excel(
+                dados_processados, competencia=competencia
+            )
 
             resumo = f"""
 ✅ **Planilha consolidada VR gerada!**
@@ -212,11 +220,11 @@ class LeitorPlanilhas:
 """
 
             # Mostrar primeiros funcionários reais
-            for i, func in enumerate(dados_processados['funcionarios'][:5]):
-                #resumo += f"\n• {func['matricula']} - {func['nome']} ({func['sindicato']}) - {func['dias_uteis']} dias - R$ {func['valor_vr_total']:,.2f}"
+            for i, func in enumerate(dados_processados["funcionarios"][:5]):
+                # resumo += f"\n• {func['matricula']} - {func['nome']} ({func['sindicato']}) - {func['dias_uteis']} dias - R$ {func['valor_vr_total']:,.2f}"
                 resumo += f"\n• {func['matricula']} - ({func['sindicato']}) - {func['dias_uteis']} dias - R$ {func['valor_vr_total']:,.2f}"
 
-            if len(dados_processados['funcionarios']) > 5:
+            if len(dados_processados["funcionarios"]) > 5:
                 resumo += f"\n... e mais {len(dados_processados['funcionarios']) - 5} funcionários."
 
             print(resumo)
@@ -234,20 +242,28 @@ class LeitorPlanilhas:
 
         # Criar resumo dos dados para o prompt
         resumo_dados = {
-            'ativos_sample': dados_estruturados['ativos']['dados'][:3] if dados_estruturados['ativos']['dados'] else [],
-            'headers_ativos': dados_estruturados['ativos']['headers'],
-            'total_ativos': dados_estruturados['ativos']['total_registros'],
-            'ferias_sample': dados_estruturados['ferias']['dados'][:3] if dados_estruturados['ferias']['dados'] else [],
-            'headers_ferias': dados_estruturados['ferias']['headers'],
-            'total_ferias': dados_estruturados['ferias']['total_registros'],
-            'base_sindicato': dados_estruturados['base_sindicato']['dados'],
-            'headers_sindicato': dados_estruturados['base_sindicato']['headers'],
-            'total_exclusoes': (
-                    dados_estruturados['aprendiz']['total_registros'] +
-                    dados_estruturados['estagio']['total_registros'] +
-                    dados_estruturados['afastamentos']['total_registros'] +
-                    dados_estruturados['exterior']['total_registros']
-            )
+            "ativos_sample": (
+                dados_estruturados["ativos"]["dados"][:3]
+                if dados_estruturados["ativos"]["dados"]
+                else []
+            ),
+            "headers_ativos": dados_estruturados["ativos"]["headers"],
+            "total_ativos": dados_estruturados["ativos"]["total_registros"],
+            "ferias_sample": (
+                dados_estruturados["ferias"]["dados"][:3]
+                if dados_estruturados["ferias"]["dados"]
+                else []
+            ),
+            "headers_ferias": dados_estruturados["ferias"]["headers"],
+            "total_ferias": dados_estruturados["ferias"]["total_registros"],
+            "base_sindicato": dados_estruturados["base_sindicato"]["dados"],
+            "headers_sindicato": dados_estruturados["base_sindicato"]["headers"],
+            "total_exclusoes": (
+                dados_estruturados["aprendiz"]["total_registros"]
+                + dados_estruturados["estagio"]["total_registros"]
+                + dados_estruturados["afastamentos"]["total_registros"]
+                + dados_estruturados["exterior"]["total_registros"]
+            ),
         }
 
         prompt_processamento = f"""
@@ -337,15 +353,17 @@ class LeitorPlanilhas:
 
             # Limpar resposta e extrair JSON
             resposta_limpa = response.text.strip()
-            if '```json' in resposta_limpa:
-                resposta_limpa = resposta_limpa.split('```json')[1].split('```')[0].strip()
-            elif '```' in resposta_limpa:
-                resposta_limpa = resposta_limpa.split('```')[1].strip()
+            if "```json" in resposta_limpa:
+                resposta_limpa = (
+                    resposta_limpa.split("```json")[1].split("```")[0].strip()
+                )
+            elif "```" in resposta_limpa:
+                resposta_limpa = resposta_limpa.split("```")[1].strip()
 
             dados_processados = json.loads(resposta_limpa)
 
             # Fallback: processar dados localmente se a IA falhar
-            if len(dados_processados.get('funcionarios', [])) < 5:
+            if len(dados_processados.get("funcionarios", [])) < 5:
                 print("⚠️  IA retornou poucos dados, processando localmente...")
                 return self._processar_dados_localmente(dados_estruturados)
 
@@ -368,34 +386,44 @@ class LeitorPlanilhas:
         matriculas_exclusao = set()
 
         # Adicionar matrículas de exclusão
-        for nome_base, dados in [("aprendiz", dados_estruturados['aprendiz']),
-                                 ("estagio", dados_estruturados['estagio']),
-                                 ("afastamentos", dados_estruturados['afastamentos']),
-                                 ("exterior", dados_estruturados['exterior'])]:
-            print(f"Processando exclusões de {nome_base}: {dados['total_registros']} registros")
-            for registro in dados['dados']:
+        for nome_base, dados in [
+            ("aprendiz", dados_estruturados["aprendiz"]),
+            ("estagio", dados_estruturados["estagio"]),
+            ("afastamentos", dados_estruturados["afastamentos"]),
+            ("exterior", dados_estruturados["exterior"]),
+        ]:
+            print(
+                f"Processando exclusões de {nome_base}: {dados['total_registros']} registros"
+            )
+            for registro in dados["dados"]:
                 for key, value in registro.items():
-                    if value and ('matricula' in key.lower() or 'matrícula' in key.lower()):
+                    if value and (
+                        "matricula" in key.lower() or "matrícula" in key.lower()
+                    ):
                         matricula_limpa = str(value).strip().upper()
                         if matricula_limpa:
                             matriculas_exclusao.add(matricula_limpa)
                             print(f"Exclusão adicionada: {matricula_limpa}")
 
         print(f"Total de matrículas para exclusão: {len(matriculas_exclusao)}")
-        print(f"Matrículas de exclusão: {list(matriculas_exclusao)[:10]}")  # Mostrar primeiras 10
+        print(
+            f"Matrículas de exclusão: {list(matriculas_exclusao)[:10]}"
+        )  # Mostrar primeiras 10
 
         funcionarios = []
         total_vr = 0
         total_empresa = 0
 
         # Processar funcionários ativos
-        print(f"Processando funcionários ativos: {dados_estruturados['ativos']['total_registros']} registros")
+        print(
+            f"Processando funcionários ativos: {dados_estruturados['ativos']['total_registros']} registros"
+        )
 
-        for i, funcionario in enumerate(dados_estruturados['ativos']['dados']):
+        for i, funcionario in enumerate(dados_estruturados["ativos"]["dados"]):
             try:
                 # Extrair dados básicos - buscar em todas as colunas
                 matricula = ""
-                #nome = ""
+                # nome = ""
                 sindicato = "SP"  # Padrão
 
                 # Buscar matrícula, nome e sindicato
@@ -405,32 +433,44 @@ class LeitorPlanilhas:
                         value_str = str(value).strip()
 
                         # Buscar matrícula
-                        if ('matricula' in key_lower or 'matrícula' in key_lower or
-                                'codigo' in key_lower or 'id' in key_lower or 'cod' in key_lower or 'cadastro' in key_lower):
-                            if value_str and not matricula:  # Pegar primeira matrícula encontrada
+                        if (
+                            "matricula" in key_lower
+                            or "matrícula" in key_lower
+                            or "codigo" in key_lower
+                            or "id" in key_lower
+                            or "cod" in key_lower
+                            or "cadastro" in key_lower
+                        ):
+                            if (
+                                value_str and not matricula
+                            ):  # Pegar primeira matrícula encontrada
                                 matricula = value_str.upper()
-                        
+
                         # Buscar nome
-                        #elif ('nome' in key_lower and 'arquivo' not in key_lower):
+                        # elif ('nome' in key_lower and 'arquivo' not in key_lower):
                         #    if len(value_str) > 2 and not nome:  # Nome deve ter mais que 2 caracteres
                         #        nome = value_str
-                        
+
                         # Buscar sindicato
-                        elif any(s in value_str.upper() for s in ['SP', 'RJ', 'RS', 'PR']):
-                            for estado in ['SP', 'RJ', 'RS', 'PR']:
+                        elif any(
+                            s in value_str.upper() for s in ["SP", "RJ", "RS", "PR"]
+                        ):
+                            for estado in ["SP", "RJ", "RS", "PR"]:
                                 if estado in value_str.upper():
                                     sindicato = estado
                                     break
 
                 # Debug: mostrar primeiros registros processados
                 if i < 5:
-                    #print(f"Funcionário {i}: Matrícula='{matricula}', Nome='{nome}', Sindicato='{sindicato}'")
-                    print(f"Funcionário {i}: Matrícula='{matricula}', Sindicato='{sindicato}'")
+                    # print(f"Funcionário {i}: Matrícula='{matricula}', Nome='{nome}', Sindicato='{sindicato}'")
+                    print(
+                        f"Funcionário {i}: Matrícula='{matricula}', Sindicato='{sindicato}'"
+                    )
 
                 # Validar dados mínimos
-                #if not matricula or not nome or len(nome) < 2:
+                # if not matricula or not nome or len(nome) < 2:
                 if not matricula:
-                    #print(f"Dados insuficientes - Matrícula: '{matricula}', Nome: '{nome}'")
+                    # print(f"Dados insuficientes - Matrícula: '{matricula}', Nome: '{nome}'")
                     print(f"Dados insuficientes - Matrícula: '{matricula}'")
                     continue
 
@@ -446,24 +486,28 @@ class LeitorPlanilhas:
                 valor_empresa = round(valor_total * 0.8, 2)
                 valor_funcionario = round(valor_total * 0.2, 2)
 
-                funcionarios.append({
-                    "matricula": matricula,
-                    #"nome": nome,
-                    "sindicato": sindicato,
-                    "dias_uteis": dias_uteis,
-                    "valor_vr_total": valor_total,
-                    "valor_empresa": valor_empresa,
-                    "valor_funcionario": valor_funcionario,
-                    "status": "ATIVO",
-                    "observacoes": "Processado com dados reais"
-                })
+                funcionarios.append(
+                    {
+                        "matricula": matricula,
+                        # "nome": nome,
+                        "sindicato": sindicato,
+                        "dias_uteis": dias_uteis,
+                        "valor_vr_total": valor_total,
+                        "valor_empresa": valor_empresa,
+                        "valor_funcionario": valor_funcionario,
+                        "status": "ATIVO",
+                        "observacoes": "Processado com dados reais",
+                    }
+                )
 
                 total_vr += valor_total
                 total_empresa += valor_empresa
 
                 if len(funcionarios) <= 3:
-                    #print(f"Funcionário processado: {matricula} - {nome} - {sindicato} - R$ {valor_total}")
-                    print(f"Funcionário processado: {matricula} - {sindicato} - R$ {valor_total}")
+                    # print(f"Funcionário processado: {matricula} - {nome} - {sindicato} - R$ {valor_total}")
+                    print(
+                        f"Funcionário processado: {matricula} - {sindicato} - R$ {valor_total}"
+                    )
 
             except Exception as e:
                 print(f"Erro processando funcionário {i}: {e}")
@@ -476,29 +520,31 @@ class LeitorPlanilhas:
             print("Nenhum funcionário encontrado, tentando abordagem mais flexível...")
 
             # Mostrar estrutura dos dados para debug
-            if dados_estruturados['ativos']['dados']:
-                primeiro_registro = dados_estruturados['ativos']['dados'][0]
+            if dados_estruturados["ativos"]["dados"]:
+                primeiro_registro = dados_estruturados["ativos"]["dados"][0]
                 print(f"Estrutura do primeiro registro: {primeiro_registro}")
                 print(f"Headers disponíveis: {dados_estruturados['ativos']['headers']}")
 
             # Tentar processar pelo menos alguns registros usando qualquer campo disponível
-            for i, funcionario in enumerate(dados_estruturados['ativos']['dados'][:10]):
+            for i, funcionario in enumerate(dados_estruturados["ativos"]["dados"][:10]):
                 values = list(funcionario.values())
                 if len(values) >= 2:  # Pelo menos 2 campos
                     matricula = f"MAT_{i + 1:03d}"  # Matrícula sequencial
-                    #nome = str(values[1]) if len(str(values[1])) > 2 else f"Funcionário {i + 1}"
+                    # nome = str(values[1]) if len(str(values[1])) > 2 else f"Funcionário {i + 1}"
 
-                    funcionarios.append({
-                        "matricula": matricula,
-                        #"nome": nome,
-                        "sindicato": "SP",
-                        "dias_uteis": 22,
-                        "valor_vr_total": 440.00,
-                        "valor_empresa": 352.00,
-                        "valor_funcionario": 88.00,
-                        "status": "ATIVO",
-                        "observacoes": "Processado com estrutura flexível"
-                    })
+                    funcionarios.append(
+                        {
+                            "matricula": matricula,
+                            # "nome": nome,
+                            "sindicato": "SP",
+                            "dias_uteis": 22,
+                            "valor_vr_total": 440.00,
+                            "valor_empresa": 352.00,
+                            "valor_funcionario": 88.00,
+                            "status": "ATIVO",
+                            "observacoes": "Processado com estrutura flexível",
+                        }
+                    )
 
                     total_vr += 440.00
                     total_empresa += 352.00
@@ -509,52 +555,151 @@ class LeitorPlanilhas:
                 "total_funcionarios": len(funcionarios),
                 "total_vr": round(total_vr, 2),
                 "total_empresa": round(total_empresa, 2),
-                "total_funcionarios_pagos": len(funcionarios)
-            }
+                "total_funcionarios_pagos": len(funcionarios),
+            },
         }
 
-    def _gerar_planilha_excel(self, dados_processados):
+    def _gerar_planilha_excel(self, dados_processados, competencia=None):
         """
-        Gera arquivo Excel com os dados processados seguindo o modelo VR Mensal
+        Gera arquivo Excel com as colunas solicitadas pelo usuário.
         """
-        # Criar workbook
+        import datetime
+
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = "VR Consolidado"
+        ws.title = "VR MENSAL"
 
         header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        header_fill = PatternFill(
+            start_color="366092", end_color="366092", fill_type="solid"
+        )
         center_align = Alignment(horizontal="center", vertical="center")
         headers = [
-            "Matricula", "Sindicato", "Dias Úteis", "Valor VR Total", "Valor Empresa (80%)", "Valor Funcionário (20%)", "Status", "Observações", "Competência"
+            "Matricula",
+            "Admissão",
+            "Sindicato do Colaborador",
+            "Competência",
+            "Dias",
+            "VALOR DIÁRIO VR",
+            "TOTAL",
+            "Custo empresa",
+            "Desconto profissional",
+            "OBS GERAL",
         ]
-
-        # Aplicar cabeçalhos
         for col, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=header)
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = center_align
 
-        # Inserir dados dos funcionários
-        competencia = dados_processados.get('competencia', None)
-        for row, funcionario in enumerate(dados_processados['funcionarios'], 2):
-            ws.cell(row=row, column=1, value=funcionario.get('matricula', ''))
-            ws.cell(row=row, column=2, value=funcionario.get('sindicato', ''))
-            ws.cell(row=row, column=3, value=funcionario.get('dias_uteis', 0))
-            ws.cell(row=row, column=4, value=funcionario.get('valor_vr_total', 0))
-            ws.cell(row=row, column=5, value=funcionario.get('valor_empresa', 0))
-            ws.cell(row=row, column=6, value=funcionario.get('valor_funcionario', 0))
-            ws.cell(row=row, column=7, value=funcionario.get('status', ''))
-            ws.cell(row=row, column=8, value=funcionario.get('observacoes', ''))
-            ws.cell(row=row, column=9, value=competencia if competencia else "05/2025")
+        # Preparar mapas de matrícula para admissão e sindicato
+        # Admissão: ADMISSÃO ABRIL.xlsx, coluna 1 = matrícula, coluna 2 = admissão
+        # Sindicato: ATIVOS.xlsx, coluna 1 = matrícula, coluna 5 = sindicato
+        # Dias: Base dias uteis.xlsx, coluna 1 = sindicato, coluna 2 = dias
+        # Valor diário: Base sindicato x valor.xlsx, coluna 1 = sindicato, coluna 2 = valor
+        #
+        # Os dados já estão carregados em gerar_consolidado_vr e passados para _processar_dados_localmente
+        #
+        # Para garantir acesso, vamos buscar os dados de admissão, sindicato, dias e valor diário
+        #
+        # Buscar dados de admissão
+        dados_admissoes = self.extrair_dados_estruturados("ADMISSÃO ABRIL.xlsx")
+        admissoes_map = {
+            str(row.get("MATRICULA", "")).strip(): row.get("DATA ADMISSAO", "")
+            for row in dados_admissoes["dados"]
+        }
 
-        # Adicionar totais
-        total_row = len(dados_processados['funcionarios']) + 3
-        ws.cell(row=total_row, column=1, value="TOTAIS:").font = Font(bold=True)
-        ws.cell(row=total_row, column=3, value=dados_processados['totais']['total_funcionarios_pagos'])
-        ws.cell(row=total_row, column=4, value=dados_processados['totais']['total_vr'])
-        ws.cell(row=total_row, column=5, value=dados_processados['totais']['total_empresa'])
+        # Buscar sindicato do colaborador
+        dados_ativos = self.extrair_dados_estruturados("ATIVOS.xlsx")
+        sindicato_map = {
+            str(row.get("MATRICULA", "")).strip(): row.get("Sindicato", "")
+            for row in dados_ativos["dados"]
+        }
+
+        # Buscar dias por sindicato
+        dados_dias_uteis = self.extrair_dados_estruturados("Base dias uteis.xlsx")
+        dias_uteis_map = {}
+        for row in dados_dias_uteis["dados"]:
+            sindicato_nome = str(row.get(list(row.keys())[0], "")).strip()
+            dias = row.get(list(row.keys())[1], "")
+            if sindicato_nome and dias:
+                dias_uteis_map[sindicato_nome] = (
+                    int(str(dias).strip()) if str(dias).strip().isdigit() else dias
+                )
+
+        # Buscar valor diário por sindicato
+        dados_valor_sindicato = self.extrair_dados_estruturados(
+            "Base sindicato x valor.xlsx"
+        )
+        valor_sindicato_map = {}
+        for row in dados_valor_sindicato["dados"]:
+            sindicato_nome = str(row.get(list(row.keys())[0], "")).strip()
+            valor = row.get(list(row.keys())[1], "")
+            if sindicato_nome and valor:
+                try:
+                    valor_sindicato_map[sindicato_nome] = float(
+                        str(valor).replace(",", ".")
+                    )
+                except:
+                    valor_sindicato_map[sindicato_nome] = valor
+
+        competencia_val = (
+            competencia
+            if competencia
+            else dados_processados.get("competencia", "05/2025")
+        )
+
+        for row_idx, funcionario in enumerate(dados_processados["funcionarios"], 2):
+            matricula = str(funcionario.get("matricula", "")).strip()
+            admissao = admissoes_map.get(matricula, "")
+            sindicato = sindicato_map.get(matricula, funcionario.get("sindicato", ""))
+            competencia_str = competencia_val
+
+            # Buscar dias pelo sindicato (busca por aproximação se necessário)
+            dias = None
+            for key in dias_uteis_map:
+                if sindicato and sindicato.split("-")[0].strip().upper() in key.upper():
+                    dias = dias_uteis_map[key]
+                    break
+            if dias is None:
+                dias = funcionario.get("dias_uteis", 0)
+
+            # Buscar valor diário pelo sindicato (busca por aproximação se necessário)
+            valor_diario = None
+            for key in valor_sindicato_map:
+                if sindicato and sindicato.split("-")[0].strip().upper() in key.upper():
+                    valor_diario = valor_sindicato_map[key]
+                    break
+            if valor_diario is None:
+                valor_diario = 0.0
+
+            # Calcular total, custo empresa, desconto profissional
+            try:
+                total = float(dias) * float(valor_diario)
+            except:
+                total = 0.0
+            custo_empresa = round(total * 0.8, 2)
+            desconto_profissional = round(total * 0.2, 2)
+
+            # OBS GERAL
+            obs_geral = funcionario.get("observacoes", "")
+            if funcionario.get("status", "").upper() == "DESLIGADO":
+                obs_geral = "Desligado - não possui direito ao VR"
+            elif funcionario.get("status", "").upper() == "FÉRIAS":
+                obs_geral = "Férias - valor proporcional"
+            elif "diretor" in obs_geral.lower() or "confiança" in obs_geral.lower():
+                obs_geral = "Cargo de confiança - não possui direito ao VR"
+
+            ws.cell(row=row_idx, column=1, value=matricula)
+            ws.cell(row=row_idx, column=2, value=admissao)
+            ws.cell(row=row_idx, column=3, value=sindicato)
+            ws.cell(row=row_idx, column=4, value=competencia_str)
+            ws.cell(row=row_idx, column=5, value=dias)
+            ws.cell(row=row_idx, column=6, value=valor_diario)
+            ws.cell(row=row_idx, column=7, value=total)
+            ws.cell(row=row_idx, column=8, value=custo_empresa)
+            ws.cell(row=row_idx, column=9, value=desconto_profissional)
+            ws.cell(row=row_idx, column=10, value=obs_geral)
 
         # Ajustar larguras
         for col in ws.columns:
@@ -569,11 +714,7 @@ class LeitorPlanilhas:
             adjusted_width = (max_length + 2) * 1.2
             ws.column_dimensions[column].width = adjusted_width
 
-        # Salvar arquivo
-    competencia_str = competencia.replace("/", "-") if competencia else "05-2025"
-    nome_arquivo = f"VR_Consolidado_Real_{competencia_str}.xlsx"
-    wb.save(nome_arquivo)
-    return nome_arquivo
+    # Salvar arquivo
 
     def ler_admissao_abril(self):
         return self.ler_planilha_como_string("ADMISSÃO ABRIL.xlsx")
@@ -617,7 +758,7 @@ class LeitorPlanilhas:
 
             resultado = f"=== PDF: {nome_arquivo} ===\n"
 
-            with open(caminho_completo, 'rb') as file:
+            with open(caminho_completo, "rb") as file:
                 pdf_reader = PyPDF2.PdfReader(file)
 
                 for num_pagina, page in enumerate(pdf_reader.pages, 1):
@@ -662,8 +803,16 @@ class LeitorPlanilhas:
             return "Erro: API key do Gemini não configurada"
 
         # Verificar se é solicitação de consolidado VR
-        if any(termo in pergunta_usuario.lower() for termo in
-               ['consolidado', 'gerar excel', 'planilha final', 'vr consolidado', 'gerar planilha']):
+        if any(
+            termo in pergunta_usuario.lower()
+            for termo in [
+                "consolidado",
+                "gerar excel",
+                "planilha final",
+                "vr consolidado",
+                "gerar planilha",
+            ]
+        ):
             return self.gerar_consolidado_vr()
 
         tipo_dados = self._determinar_tipo_dados(pergunta_usuario)
@@ -671,19 +820,21 @@ class LeitorPlanilhas:
         dados_completos = ""
         metodos_usados = []
 
-        if 'excel' in tipo_dados:
+        if "excel" in tipo_dados:
             metodo_excel = self._escolher_metodo_excel(pergunta_usuario)
             dados_excel = self._executar_metodo(metodo_excel)
             dados_completos += dados_excel
             metodos_usados.append(f"Excel: {metodo_excel}")
 
-        if 'pdf' in tipo_dados:
+        if "pdf" in tipo_dados:
             metodo_pdf = self._escolher_metodo_pdf(pergunta_usuario)
             dados_pdf = self._executar_metodo_pdf(metodo_pdf)
             dados_completos += "\n" + dados_pdf
             metodos_usados.append(f"PDF: {metodo_pdf}")
 
-        resposta_final = self._gerar_resposta_final(pergunta_usuario, metodos_usados, dados_completos)
+        resposta_final = self._gerar_resposta_final(
+            pergunta_usuario, metodos_usados, dados_completos
+        )
 
         return resposta_final
 
@@ -708,15 +859,15 @@ class LeitorPlanilhas:
             response = self.model.generate_content(prompt_tipo)
             tipo = response.text.strip().lower()
 
-            if 'excel,pdf' in tipo or 'pdf,excel' in tipo:
-                return ['excel', 'pdf']
-            elif 'pdf' in tipo:
-                return ['pdf']
+            if "excel,pdf" in tipo or "pdf,excel" in tipo:
+                return ["excel", "pdf"]
+            elif "pdf" in tipo:
+                return ["pdf"]
             else:
-                return ['excel']  # Padrão
+                return ["excel"]  # Padrão
 
         except Exception as e:
-            return ['excel']  # Fallback
+            return ["excel"]  # Fallback
 
     def _escolher_metodo_excel(self, pergunta_usuario):
         """
@@ -749,15 +900,24 @@ class LeitorPlanilhas:
             metodo = response.text.strip()
 
             metodos_excel_validos = [
-                'ler_admissao_abril', 'ler_afastamentos', 'ler_aprendiz', 'ler_ativos',
-                'ler_base_dias_uteis', 'ler_base_sindicato_valor', 'ler_desligados',
-                'ler_estagio', 'ler_exterior', 'ler_ferias', 'ler_vr_mensal', 'ler_todas_planilhas'
+                "ler_admissao_abril",
+                "ler_afastamentos",
+                "ler_aprendiz",
+                "ler_ativos",
+                "ler_base_dias_uteis",
+                "ler_base_sindicato_valor",
+                "ler_desligados",
+                "ler_estagio",
+                "ler_exterior",
+                "ler_ferias",
+                "ler_vr_mensal",
+                "ler_todas_planilhas",
             ]
 
-            return metodo if metodo in metodos_excel_validos else 'ler_todas_planilhas'
+            return metodo if metodo in metodos_excel_validos else "ler_todas_planilhas"
 
         except Exception as e:
-            return 'ler_todas_planilhas'
+            return "ler_todas_planilhas"
 
     def _escolher_metodo_pdf(self, pergunta_usuario):
         """
@@ -783,13 +943,17 @@ class LeitorPlanilhas:
             metodo = response.text.strip()
 
             metodos_pdf_validos = [
-                'ler_sindpd_rj', 'ler_sindpd_sp', 'ler_sindpd_rs', 'ler_sitepd_pr', 'ler_todos_pdfs'
+                "ler_sindpd_rj",
+                "ler_sindpd_sp",
+                "ler_sindpd_rs",
+                "ler_sitepd_pr",
+                "ler_todos_pdfs",
             ]
 
-            return metodo if metodo in metodos_pdf_validos else 'ler_todos_pdfs'
+            return metodo if metodo in metodos_pdf_validos else "ler_todos_pdfs"
 
         except Exception as e:
-            return 'ler_todos_pdfs'
+            return "ler_todos_pdfs"
 
     def _executar_metodo_pdf(self, nome_metodo):
         """
@@ -846,12 +1010,12 @@ class LeitorPlanilhas:
 
 if __name__ == "__main__":
     # Verificar API key
-    API_KEY = os.getenv("GOOGLE_API_KEY") 
+    API_KEY = os.getenv("GOOGLE_API_KEY")
 
     leitor = LeitorPlanilhas(
         caminho_pasta="./bases",
         caminho_pasta_pdfs="./documents",
-        api_key_gemini=API_KEY
+        api_key_gemini=API_KEY,
     )
 
     app = Flask(__name__)
@@ -1195,42 +1359,35 @@ if __name__ == "__main__":
     </html>
     """
 
-
-    @app.route('/')
+    @app.route("/")
     def home():
         return render_template_string(HTML_TEMPLATE)
 
-
-    @app.route('/static/<filename>')
+    @app.route("/static/<filename>")
     def static_files(filename):
-        return send_from_directory('.', filename)
+        return send_from_directory(".", filename)
 
-
-    @app.route('/chat', methods=['POST'])
+    @app.route("/chat", methods=["POST"])
     def chat():
         try:
             data = request.get_json()
-            pergunta = data.get('message', '')
+            pergunta = data.get("message", "")
 
             if not pergunta:
-                return jsonify({
-                    'success': False,
-                    'error': 'Pergunta não fornecida'
-                })
+                return jsonify({"success": False, "error": "Pergunta não fornecida"})
 
             resposta = leitor.processar_pergunta_usuario(pergunta)
 
-            return jsonify({
-                'success': True,
-                'response': resposta
-            })
+            return jsonify({"success": True, "response": resposta})
 
         except Exception as e:
-            return jsonify({
-                'success': False,
-                'error': str(e)
-            })
+            return jsonify({"success": False, "error": str(e)})
 
+    import webbrowser
+    import threading
+
+    def open_browser():
+        webbrowser.open_new("http://localhost:5000")
 
     print("Iniciando servidor Flask com processamento de dados REAIS...")
     print("Certifique-se de que:")
@@ -1240,13 +1397,23 @@ if __name__ == "__main__":
     print("   - API Key do Gemini está configurada")
     print("\nAcesse: http://localhost:5000\n")
 
+    threading.Timer(1.5, open_browser).start()
     try:
         # Try running with debug mode first
-        app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False, threaded=True)
+        app.run(
+            debug=True, host="0.0.0.0", port=5000, use_reloader=False, threaded=True
+        )
     except ValueError as e:
         if "signal only works in main thread" in str(e):
-            print("Debug mode não suportado neste ambiente, executando em modo produção...")
-            # Fallback: run without debug mode and reloader
-            app.run(debug=False, host='0.0.0.0', port=5000, use_reloader=False, threaded=True)
+            print(
+                "Debug mode não suportado neste ambiente, executando em modo produção..."
+            )
+            app.run(
+                debug=False,
+                host="0.0.0.0",
+                port=5000,
+                use_reloader=False,
+                threaded=True,
+            )
         else:
             raise e
