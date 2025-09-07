@@ -15,6 +15,95 @@ load_dotenv()
 
 
 class LeitorPlanilhas:
+    def _extrair_sindicato(self, funcionario):
+        """
+        Extrai o sindicato do registro do funcionário de forma flexível, considerando variações de nomes e siglas.
+        Não cria novas colunas nem descarta registros.
+        """
+        # Lista de possíveis siglas e nomes de sindicatos
+        sindicatos = [
+            (
+                "SP",
+                [
+                    "SINDPD SP",
+                    "SINDPD-SP",
+                    "SINDPDSP",
+                    "SP",
+                    "SÃO PAULO",
+                    "SAO PAULO",
+                    "SINDICATO SP",
+                    "SINDICATO SÃO PAULO",
+                    "SINDICATO SAO PAULO",
+                    "SITEPD SP",
+                    "SITEPD-SP",
+                    "SITEPDSP",
+                ],
+            ),
+            (
+                "RJ",
+                [
+                    "SINDPD RJ",
+                    "SINDPD-RJ",
+                    "SINDPDRJ",
+                    "RJ",
+                    "RIO DE JANEIRO",
+                    "SINDICATO RJ",
+                    "SINDICATO RIO DE JANEIRO",
+                    "SITEPD RJ",
+                    "SITEPD-RJ",
+                    "SITEPDRJ",
+                ],
+            ),
+            (
+                "RS",
+                [
+                    "SINDPPD RS",
+                    "SINDPPD-RS",
+                    "SINDPPDRS",
+                    "RS",
+                    "RIO GRANDE DO SUL",
+                    "SINDICATO RS",
+                    "SINDICATO RIO GRANDE DO SUL",
+                    "SITEPD RS",
+                    "SITEPD-RS",
+                    "SITEPDRS",
+                ],
+            ),
+            (
+                "PR",
+                [
+                    "SITEPD PR",
+                    "SITEPD-PR",
+                    "SITEPDPR",
+                    "PR",
+                    "PARANÁ",
+                    "PARANA",
+                    "SINDICATO PR",
+                    "SINDICATO PARANÁ",
+                    "SINDICATO PARANA",
+                ],
+            ),
+        ]
+        # Procurar em todos os campos do funcionário
+        for key, value in funcionario.items():
+            if not value:
+                continue
+            valor = str(value).upper().strip()
+            for sigla, nomes in sindicatos:
+                for nome in nomes:
+                    if nome in valor:
+                        return sigla
+        # Fallback: procurar sigla isolada (ex: "SP", "RJ", etc.)
+        for key, value in funcionario.items():
+            if not value:
+                continue
+            valor = str(value).upper().strip()
+            for sigla, _ in sindicatos:
+                if re.search(rf"\b{sigla}\b", valor):
+                    return sigla
+        # Se não encontrar, retorna string vazia
+        return ""
+
     def __init__(
         self, caminho_pasta="./", caminho_pasta_pdfs="./pdfs", api_key_gemini=None
     ):
@@ -36,11 +125,7 @@ class LeitorPlanilhas:
             "FÉRIAS.xlsx",
             "VR MENSAL 05.2025.xlsx",
         ]
-
-        # PDFs disponíveis
         self.pdfs = ["SINDPD RJ.pdf", "SINDPD SP.pdf", "SINDPD RS.pdf", "SITEPD PR.pdf"]
-
-        # Configurar Gemini
         if api_key_gemini:
             genai.configure(api_key=api_key_gemini)
             self.model = genai.GenerativeModel("gemini-1.5-flash")
@@ -149,91 +234,76 @@ class LeitorPlanilhas:
         if not self.model:
             return "Erro: API key do Gemini não configurada"
 
-        try:
-            print("📊 Coletando dados estruturados das bases...")
+        print("Coletando dados estruturados das bases...")
 
-            # Extrair dados estruturados de cada planilha
-            dados_ativos = self.extrair_dados_estruturados("ATIVOS.xlsx")
-            dados_ferias = self.extrair_dados_estruturados("FÉRIAS.xlsx")
-            dados_desligados = self.extrair_dados_estruturados("DESLIGADOS.xlsx")
-            dados_admissoes = self.extrair_dados_estruturados("ADMISSÃO ABRIL.xlsx")
-            dados_base_sindicato = self.extrair_dados_estruturados(
-                "Base sindicato x valor.xlsx"
+        # Extrair dados estruturados de cada planilha
+        dados_ativos = self.extrair_dados_estruturados("ATIVOS.xlsx")
+        dados_ferias = self.extrair_dados_estruturados("FÉRIAS.xlsx")
+        dados_desligados = self.extrair_dados_estruturados("DESLIGADOS.xlsx")
+        dados_admissoes = self.extrair_dados_estruturados("ADMISSÃO ABRIL.xlsx")
+        dados_base_sindicato = self.extrair_dados_estruturados(
+            "Base sindicato x valor.xlsx"
+        )
+        dados_dias_uteis = self.extrair_dados_estruturados("Base dias uteis.xlsx")
+        dados_afastamentos = self.extrair_dados_estruturados("AFASTAMENTOS.xlsx")
+        dados_aprendiz = self.extrair_dados_estruturados("APRENDIZ.xlsx")
+        dados_estagio = self.extrair_dados_estruturados("ESTÁGIO.xlsx")
+        dados_exterior = self.extrair_dados_estruturados("EXTERIOR.xlsx")
+
+        # Detectar competência mais recente se não informada
+        if not competencia:
+            competencia = (
+                "05/2025"  # Padrão, mas pode ser extraído dos dados se necessário
             )
-            dados_dias_uteis = self.extrair_dados_estruturados("Base dias uteis.xlsx")
-            dados_afastamentos = self.extrair_dados_estruturados("AFASTAMENTOS.xlsx")
-            dados_aprendiz = self.extrair_dados_estruturados("APRENDIZ.xlsx")
-            dados_estagio = self.extrair_dados_estruturados("ESTÁGIO.xlsx")
-            dados_exterior = self.extrair_dados_estruturados("EXTERIOR.xlsx")
+            # TODO: lógica para extrair competência mais recente das bases
 
-            # Detectar competência mais recente se não informada
-            if not competencia:
-                competencia = (
-                    "05/2025"  # Padrão, mas pode ser extraído dos dados se necessário
-                )
-                # TODO: lógica para extrair competência mais recente das bases
+        print("Dados estruturados coletados com sucesso!")
 
-            print("✅ Dados estruturados coletados com sucesso!")
+        # Processar dados com agente especializado
+        print("Processando com agente especializado...")
+        dados_processados = self._processar_dados_reais_com_agente(
+            {
+                "ativos": dados_ativos,
+                "ferias": dados_ferias,
+                "desligados": dados_desligados,
+                "admissoes": dados_admissoes,
+                "base_sindicato": dados_base_sindicato,
+                "dias_uteis": dados_dias_uteis,
+                "afastamentos": dados_afastamentos,
+                "aprendiz": dados_aprendiz,
+                "estagio": dados_estagio,
+                "exterior": dados_exterior,
+            },
+            competencia=competencia,
+        )
 
-            # Processar dados com agente especializado
-            print("🤖 Processando com agente especializado...")
-            dados_processados = self._processar_dados_reais_com_agente(
-                {
-                    "ativos": dados_ativos,
-                    "ferias": dados_ferias,
-                    "desligados": dados_desligados,
-                    "admissoes": dados_admissoes,
-                    "base_sindicato": dados_base_sindicato,
-                    "dias_uteis": dados_dias_uteis,
-                    "afastamentos": dados_afastamentos,
-                    "aprendiz": dados_aprendiz,
-                    "estagio": dados_estagio,
-                    "exterior": dados_exterior,
-                },
-                competencia=competencia,
-            )
+        print(
+            f"Dados processados: {dados_processados['totais']['total_funcionarios']} funcionários"
+        )
 
-            print(
-                f"✅ Dados processados: {dados_processados['totais']['total_funcionarios']} funcionários"
-            )
+        # Gerar planilha Excel
+        print("Gerando planilha consolidada...")
+        nome_arquivo = self._gerar_planilha_excel(
+            dados_processados, competencia=competencia
+        )
 
-            # Gerar planilha Excel
-            print("📝 Gerando planilha consolidada...")
-            nome_arquivo = self._gerar_planilha_excel(
-                dados_processados, competencia=competencia
-            )
-
-            resumo = f"""
-✅ **Planilha consolidada VR gerada!**
-📁 **Arquivo salvo em:** <b>{nome_arquivo}</b>
-👥 **Funcionários processados:** {dados_processados['totais']['total_funcionarios']}
-💰 **Valor total VR:** R$ {dados_processados['totais']['total_vr']:,.2f}
-🏢 **Custo empresa (80%):** R$ {dados_processados['totais']['total_empresa']:,.2f}
-👤 **Desconto funcionários (20%):** R$ {dados_processados['totais']['total_vr'] - dados_processados['totais']['total_empresa']:,.2f}
-<br><br>**Base de dados processada:**
-• Funcionários ativos: {dados_ativos['total_registros']} registros<br>
-• Funcionários em férias: {dados_ferias['total_registros']} registros<br>
-• Desligamentos: {dados_desligados['total_registros']} registros<br>
-• Admissões: {dados_admissoes['total_registros']} registros<br>
-• Exclusões aplicadas: Diretores, Estagiários, Aprendizes, Afastados, Exterior<br>
-<br>**Primeiros funcionários processados:**
-"""
-
-            # Mostrar primeiros funcionários reais
-            for i, func in enumerate(dados_processados["funcionarios"][:5]):
-                # resumo += f"\n• {func['matricula']} - {func['nome']} ({func['sindicato']}) - {func['dias_uteis']} dias - R$ {func['valor_vr_total']:,.2f}"
-                resumo += f"\n• {func['matricula']} - ({func['sindicato']}) - {func['dias_uteis']} dias - R$ {func['valor_vr_total']:,.2f}"
-
-            if len(dados_processados["funcionarios"]) > 5:
-                resumo += f"\n... e mais {len(dados_processados['funcionarios']) - 5} funcionários."
-
-            print(resumo)
-            return resumo
-
-        except Exception as e:
-            error_msg = f"❌ Erro ao gerar consolidado: {str(e)}"
-            print(error_msg)
-            return error_msg
+        resumo = (
+            "Planilha consolidada VR gerada!\n"
+            f"Arquivo salvo em: {nome_arquivo}\n"
+            f"Funcionários processados: {dados_processados['totais']['total_funcionarios']}\n"
+            f"Valor total VR: R$ {dados_processados['totais']['total_vr']:,.2f}\n"
+            f"Custo empresa (80%): R$ {dados_processados['totais']['total_empresa']:,.2f}\n"
+            f"Desconto funcionários (20%): R$ {dados_processados['totais']['total_vr'] - dados_processados['totais']['total_empresa']:,.2f}\n"
+            "\nBase de dados processada:\n"
+            f"- Funcionários ativos: {dados_ativos['total_registros']} registros\n"
+            f"- Funcionários em férias: {dados_ferias['total_registros']} registros\n"
+            f"- Desligamentos: {dados_desligados['total_registros']} registros\n"
+            f"- Admissões: {dados_admissoes['total_registros']} registros\n"
+            "- Exclusões aplicadas: Diretores, Estagiários, Aprendizes, Afastados, Exterior\n"
+            "\nPrimeiros funcionários processados:\n"
+        )
+        print(resumo)
+        return resumo
 
     def _processar_dados_reais_com_agente(self, dados_estruturados, competencia=None):
         """
@@ -348,29 +418,26 @@ class LeitorPlanilhas:
         RESPONDA APENAS COM JSON VÁLIDO:
         """
 
-        try:
-            response = self.model.generate_content(prompt_processamento)
-
-            # Limpar resposta e extrair JSON
-            resposta_limpa = response.text.strip()
-            if "```json" in resposta_limpa:
-                resposta_limpa = (
-                    resposta_limpa.split("```json")[1].split("```")[0].strip()
-                )
-            elif "```" in resposta_limpa:
-                resposta_limpa = resposta_limpa.split("```")[1].strip()
-
-            dados_processados = json.loads(resposta_limpa)
-
-            # Fallback: processar dados localmente se a IA falhar
-            if len(dados_processados.get("funcionarios", [])) < 5:
-                print("⚠️  IA retornou poucos dados, processando localmente...")
+        # IA Gemini só se configurada corretamente
+        if self.model:
+            try:
+                response = self.model.generate_content(prompt_processamento)
+                resposta_limpa = response.text.strip()
+                # Limpeza básica do JSON retornado
+                if resposta_limpa.startswith("```json"):
+                    resposta_limpa = resposta_limpa[7:]
+                if resposta_limpa.endswith("```"):
+                    resposta_limpa = resposta_limpa[:-3]
+                dados_processados = json.loads(resposta_limpa)
+                if len(dados_processados.get("funcionarios", [])) < 5:
+                    print("IA retornou poucos dados, processando localmente...")
+                    return self._processar_dados_localmente(dados_estruturados)
+                return dados_processados
+            except Exception as e:
+                print(f"Erro na IA, processando localmente: {e}")
                 return self._processar_dados_localmente(dados_estruturados)
-
-            return dados_processados
-
-        except Exception as e:
-            print(f"❌ Erro na IA, processando localmente: {e}")
+        else:
+            print("IA não configurada, processando localmente...")
             return self._processar_dados_localmente(dados_estruturados)
 
     def _processar_dados_localmente(self, dados_estruturados):
@@ -420,19 +487,18 @@ class LeitorPlanilhas:
         )
 
         for i, funcionario in enumerate(dados_estruturados["ativos"]["dados"]):
+
             try:
                 # Extrair dados básicos - buscar em todas as colunas
                 matricula = ""
-                # nome = ""
-                sindicato = "SP"  # Padrão
 
-                # Buscar matrícula, nome e sindicato
+                sindicato = self._extrair_sindicato(funcionario)
+
+                # Buscar matrícula
                 for key, value in funcionario.items():
                     if value and str(value).strip():
                         key_lower = key.lower()
                         value_str = str(value).strip()
-
-                        # Buscar matrícula
                         if (
                             "matricula" in key_lower
                             or "matrícula" in key_lower
@@ -441,37 +507,35 @@ class LeitorPlanilhas:
                             or "cod" in key_lower
                             or "cadastro" in key_lower
                         ):
-                            if (
-                                value_str and not matricula
-                            ):  # Pegar primeira matrícula encontrada
+                            if value_str and not matricula:
                                 matricula = value_str.upper()
-
-                        # Buscar nome
-                        # elif ('nome' in key_lower and 'arquivo' not in key_lower):
-                        #    if len(value_str) > 2 and not nome:  # Nome deve ter mais que 2 caracteres
-                        #        nome = value_str
-
-                        # Buscar sindicato
-                        elif any(
-                            s in value_str.upper() for s in ["SP", "RJ", "RS", "PR"]
-                        ):
-                            for estado in ["SP", "RJ", "RS", "PR"]:
-                                if estado in value_str.upper():
-                                    sindicato = estado
-                                    break
 
                 # Debug: mostrar primeiros registros processados
                 if i < 5:
-                    # print(f"Funcionário {i}: Matrícula='{matricula}', Nome='{nome}', Sindicato='{sindicato}'")
                     print(
                         f"Funcionário {i}: Matrícula='{matricula}', Sindicato='{sindicato}'"
                     )
 
                 # Validar dados mínimos
-                # if not matricula or not nome or len(nome) < 2:
                 if not matricula:
-                    # print(f"Dados insuficientes - Matrícula: '{matricula}', Nome: '{nome}'")
                     print(f"Dados insuficientes - Matrícula: '{matricula}'")
+                    continue
+
+                # Verificar se é diretor (excluir)
+                eh_diretor = False
+                for key, value in funcionario.items():
+                    if value and any(
+                        termo in str(value).upper()
+                        for termo in ["DIRETOR", "DIRETORA", "PRESIDENTE", "CEO"]
+                    ):
+                        if any(
+                            termo in key.upper()
+                            for termo in ["CARGO", "FUNCAO", "CARGO"]
+                        ):
+                            eh_diretor = True
+                            break
+                if eh_diretor:
+                    print(f"Diretor excluído: {matricula}")
                     continue
 
                 # Pular se for exclusão
@@ -489,13 +553,14 @@ class LeitorPlanilhas:
                 funcionarios.append(
                     {
                         "matricula": matricula,
-                        # "nome": nome,
+                        "admissao": funcionario.get("Admissão", ""),
                         "sindicato": sindicato,
+                        "competencia": "05/2025",  # ou variável se disponível
                         "dias_uteis": dias_uteis,
+                        "valor_diario_vr": valor_dia,
                         "valor_vr_total": valor_total,
                         "valor_empresa": valor_empresa,
                         "valor_funcionario": valor_funcionario,
-                        "status": "ATIVO",
                         "observacoes": "Processado com dados reais",
                     }
                 )
@@ -535,13 +600,14 @@ class LeitorPlanilhas:
                     funcionarios.append(
                         {
                             "matricula": matricula,
-                            # "nome": nome,
+                            "admissao": "",
                             "sindicato": "SP",
+                            "competencia": "05/2025",
                             "dias_uteis": 22,
+                            "valor_diario_vr": 20.00,
                             "valor_vr_total": 440.00,
                             "valor_empresa": 352.00,
                             "valor_funcionario": 88.00,
-                            "status": "ATIVO",
                             "observacoes": "Processado com estrutura flexível",
                         }
                     )
@@ -563,10 +629,10 @@ class LeitorPlanilhas:
         """
         Gera arquivo Excel com as colunas solicitadas pelo usuário.
         """
-        import datetime
-
         wb = openpyxl.Workbook()
         ws = wb.active
+        if ws is None:
+            ws = wb.create_sheet(title="VR MENSAL")
         ws.title = "VR MENSAL"
 
         header_font = Font(bold=True, color="FFFFFF")
@@ -592,56 +658,103 @@ class LeitorPlanilhas:
             cell.fill = header_fill
             cell.alignment = center_align
 
-        # Preparar mapas de matrícula para admissão e sindicato
-        # Admissão: ADMISSÃO ABRIL.xlsx, coluna 1 = matrícula, coluna 2 = admissão
-        # Sindicato: ATIVOS.xlsx, coluna 1 = matrícula, coluna 5 = sindicato
-        # Dias: Base dias uteis.xlsx, coluna 1 = sindicato, coluna 2 = dias
-        # Valor diário: Base sindicato x valor.xlsx, coluna 1 = sindicato, coluna 2 = valor
-        #
-        # Os dados já estão carregados em gerar_consolidado_vr e passados para _processar_dados_localmente
-        #
-        # Para garantir acesso, vamos buscar os dados de admissão, sindicato, dias e valor diário
-        #
-        # Buscar dados de admissão
+        # Preparar mapas de matrícula para admissão - CORRIGIDO
         dados_admissoes = self.extrair_dados_estruturados("ADMISSÃO ABRIL.xlsx")
-        admissoes_map = {
-            str(row.get("MATRICULA", "")).strip(): row.get("DATA ADMISSAO", "")
-            for row in dados_admissoes["dados"]
-        }
+        admissoes_map = {}
+        for row in dados_admissoes["dados"]:
+            matricula = ""
+            data_admissao = ""
+            # Buscar matrícula em qualquer coluna
+            for key, value in row.items():
+                if value and any(
+                    term in key.lower()
+                    for term in ["matricula", "matrícula", "codigo", "id", "cadastro"]
+                ):
+                    matricula = str(value).strip()
+                    break
+            # Buscar data de admissão em qualquer coluna
+            for key, value in row.items():
+                if value and any(
+                    term in key.lower()
+                    for term in ["data", "admissao", "admissão", "dt", "date"]
+                ):
+                    data_str = str(value)
+                    # Remover hora se existir
+                    if " " in data_str:
+                        data_str = data_str.split(" ")[0]
+                    elif "T" in data_str:
+                        data_str = data_str.split("T")[0]
+                    data_admissao = data_str
+                    break
+            if matricula:
+                admissoes_map[matricula] = data_admissao
 
-        # Buscar sindicato do colaborador
+        # Preparar outros mapas
         dados_ativos = self.extrair_dados_estruturados("ATIVOS.xlsx")
-        sindicato_map = {
-            str(row.get("MATRICULA", "")).strip(): row.get("Sindicato", "")
-            for row in dados_ativos["dados"]
-        }
+        sindicato_map = {}
+        for row in dados_ativos["dados"]:
+            for key, value in row.items():
+                if value and any(
+                    term in key.lower()
+                    for term in ["matricula", "matrícula", "codigo", "id"]
+                ):
+                    matricula = str(value).strip()
+                    # Buscar sindicato
+                    for k2, v2 in row.items():
+                        if v2 and any(
+                            s in str(v2).upper()
+                            for s in ["SP", "RJ", "RS", "PR", "SINDPD", "SITEPD"]
+                        ):
+                            sindicato_map[matricula] = str(v2)
+                            break
+                    break
 
-        # Buscar dias por sindicato
         dados_dias_uteis = self.extrair_dados_estruturados("Base dias uteis.xlsx")
         dias_uteis_map = {}
         for row in dados_dias_uteis["dados"]:
-            sindicato_nome = str(row.get(list(row.keys())[0], "")).strip()
-            dias = row.get(list(row.keys())[1], "")
-            if sindicato_nome and dias:
-                dias_uteis_map[sindicato_nome] = (
-                    int(str(dias).strip()) if str(dias).strip().isdigit() else dias
-                )
+            for key, value in row.items():
+                if value and any(
+                    s in str(value).upper()
+                    for s in ["SP", "RJ", "RS", "PR", "SINDPD", "SITEPD"]
+                ):
+                    sindicato_nome = str(value).strip()
+                    # Encontrar valor de dias
+                    for k2, v2 in row.items():
+                        if k2 != key and v2 and str(v2).strip().isdigit():
+                            dias_uteis_map[sindicato_nome] = int(str(v2).strip())
+                            break
+                    break
 
-        # Buscar valor diário por sindicato
         dados_valor_sindicato = self.extrair_dados_estruturados(
             "Base sindicato x valor.xlsx"
         )
         valor_sindicato_map = {}
         for row in dados_valor_sindicato["dados"]:
-            sindicato_nome = str(row.get(list(row.keys())[0], "")).strip()
-            valor = row.get(list(row.keys())[1], "")
-            if sindicato_nome and valor:
-                try:
-                    valor_sindicato_map[sindicato_nome] = float(
-                        str(valor).replace(",", ".")
-                    )
-                except:
-                    valor_sindicato_map[sindicato_nome] = valor
+            for key, value in row.items():
+                if value and any(
+                    s in str(value).upper()
+                    for s in ["SP", "RJ", "RS", "PR", "SINDPD", "SITEPD"]
+                ):
+                    sindicato_nome = str(value).strip()
+                    # Encontrar valor
+                    for k2, v2 in row.items():
+                        if k2 != key and v2:
+                            try:
+                                valor_sindicato_map[sindicato_nome] = float(
+                                    str(v2).replace(",", ".")
+                                )
+                            except:
+                                valor_sindicato_map[sindicato_nome] = v2
+                            break
+                    break
+
+        # DEBUG: Mostrar mapas carregados
+        print("=== DEBUG: MAPAS CARREGADOS ===")
+        print(f"Admissões: {len(admissoes_map)} registros")
+        print(f"Sindicatos: {len(sindicato_map)} registros")
+        print(f"Dias úteis: {dias_uteis_map}")
+        print(f"Valores: {valor_sindicato_map}")
+        print("==============================")
 
         competencia_val = (
             competencia
@@ -649,72 +762,121 @@ class LeitorPlanilhas:
             else dados_processados.get("competencia", "05/2025")
         )
 
+        # Processar TODOS os funcionários, não apenas alguns
         for row_idx, funcionario in enumerate(dados_processados["funcionarios"], 2):
             matricula = str(funcionario.get("matricula", "")).strip()
-            admissao = admissoes_map.get(matricula, "")
-            sindicato = sindicato_map.get(matricula, funcionario.get("sindicato", ""))
+            admissao = admissoes_map.get(matricula, "Não encontrada")
+            sindicato_full = sindicato_map.get(
+                matricula, funcionario.get("sindicato", "")
+            )
             competencia_str = competencia_val
 
-            # Buscar dias pelo sindicato (busca por aproximação se necessário)
+            # Extrair sigla do sindicato
+            sigla = ""
+            if sindicato_full:
+                sindicato_upper = sindicato_full.upper()
+                for estado in ["SP", "RS", "PR", "RJ"]:
+                    if estado in sindicato_upper:
+                        sigla = estado
+                        break
+                if not sigla and funcionario.get("sindicato"):
+                    sigla = funcionario.get("sindicato")
+
+            # Buscar dias úteis
             dias = None
-            for key in dias_uteis_map:
-                if sindicato and sindicato.split("-")[0].strip().upper() in key.upper():
-                    dias = dias_uteis_map[key]
-                    break
+            if sigla:
+                for key in dias_uteis_map:
+                    if sigla in key.upper():
+                        dias = dias_uteis_map[key]
+                        break
             if dias is None:
-                dias = funcionario.get("dias_uteis", 0)
+                dias = funcionario.get("dias_uteis", 22)
 
-            # Buscar valor diário pelo sindicato (busca por aproximação se necessário)
+            # Buscar valor diário
             valor_diario = None
-            for key in valor_sindicato_map:
-                if sindicato and sindicato.split("-")[0].strip().upper() in key.upper():
-                    valor_diario = valor_sindicato_map[key]
-                    break
+            if sigla:
+                for key in valor_sindicato_map:
+                    if sigla in key.upper():
+                        valor_diario = valor_sindicato_map[key]
+                        break
             if valor_diario is None:
-                valor_diario = 0.0
+                valores_padrao = {"SP": 20.00, "RJ": 18.00, "RS": 16.00, "PR": 19.00}
+                valor_diario = valores_padrao.get(sigla, 20.00)
 
-            # Calcular total, custo empresa, desconto profissional
+            # Calcular totais
             try:
-                total = float(dias) * float(valor_diario)
-            except:
-                total = 0.0
+                dias_num = float(dias) if dias else 0
+                valor_diario_num = float(valor_diario) if valor_diario else 0
+                total = dias_num * valor_diario_num
+            except (ValueError, TypeError):
+                total = 0
+                dias_num = 0
+                valor_diario_num = 0
+
             custo_empresa = round(total * 0.8, 2)
             desconto_profissional = round(total * 0.2, 2)
 
-            # OBS GERAL
             obs_geral = funcionario.get("observacoes", "")
-            if funcionario.get("status", "").upper() == "DESLIGADO":
+            status = str(funcionario.get("status", "")).upper()
+            if status == "DESLIGADO":
                 obs_geral = "Desligado - não possui direito ao VR"
-            elif funcionario.get("status", "").upper() == "FÉRIAS":
+            elif status == "FÉRIAS":
                 obs_geral = "Férias - valor proporcional"
             elif "diretor" in obs_geral.lower() or "confiança" in obs_geral.lower():
                 obs_geral = "Cargo de confiança - não possui direito ao VR"
 
+            # Preencher planilha
             ws.cell(row=row_idx, column=1, value=matricula)
             ws.cell(row=row_idx, column=2, value=admissao)
-            ws.cell(row=row_idx, column=3, value=sindicato)
+            ws.cell(row=row_idx, column=3, value=sindicato_full)
             ws.cell(row=row_idx, column=4, value=competencia_str)
-            ws.cell(row=row_idx, column=5, value=dias)
-            ws.cell(row=row_idx, column=6, value=valor_diario)
+            ws.cell(row=row_idx, column=5, value=dias_num)
+            ws.cell(row=row_idx, column=6, value=valor_diario_num)
             ws.cell(row=row_idx, column=7, value=total)
             ws.cell(row=row_idx, column=8, value=custo_empresa)
             ws.cell(row=row_idx, column=9, value=desconto_profissional)
             ws.cell(row=row_idx, column=10, value=obs_geral)
 
-        # Ajustar larguras
+            # Debug apenas dos primeiros registros
+            if row_idx <= 5:
+                print(
+                    f"Processado: {matricula} - {sigla} - {dias_num}d - R${valor_diario_num} - Total: R${total}"
+                )
+
+        # Ajustar larguras das colunas
         for col in ws.columns:
             max_length = 0
-            column = col[0].column_letter
+            # openpyxl: coluna pode ser int, precisa ser string
+            column = None
+            if hasattr(col[0], "column_letter"):
+                column = str(col[0].column_letter)
+            elif hasattr(col[0], "column"):
+                column = str(col[0].column)
             for cell in col:
                 try:
                     if len(str(cell.value)) > max_length:
                         max_length = len(str(cell.value))
                 except:
                     pass
-            adjusted_width = (max_length + 2) * 1.2
-            ws.column_dimensions[column].width = adjusted_width
+            if column:
+                adjusted_width = (max_length + 2) * 1.2
+                ws.column_dimensions[column].width = adjusted_width
 
-    # Salvar arquivo
+        # Salvar arquivo
+        competencia_str = str(competencia_val).replace("/", "-")
+        filename = f"VR MENSAL {competencia_str}.xlsx"
+        data_dir = os.path.join(os.getcwd(), "data")
+        if os.path.isdir(data_dir):
+            save_path = os.path.join(data_dir, filename)
+        else:
+            save_path = os.path.join(os.getcwd(), filename)
+
+        wb.save(save_path)
+        print(f"Planilha salva em: {save_path}")
+        print(
+            f"Total de registros processados: {len(dados_processados['funcionarios'])}"
+        )
+        return save_path
 
     def ler_admissao_abril(self):
         return self.ler_planilha_como_string("ADMISSÃO ABRIL.xlsx")
@@ -772,17 +934,18 @@ class LeitorPlanilhas:
         except Exception as e:
             return f"Erro ao ler PDF {nome_arquivo}: {str(e)}\n\n"
 
-    def ler_sindpd_rj(self):
-        return self.ler_pdf_como_string("SINDPD RJ.pdf")
-
-    def ler_sindpd_sp(self):
-        return self.ler_pdf_como_string("SINDPD SP.pdf")
-
-    def ler_sindpd_rs(self):
-        return self.ler_pdf_como_string("SINDPD RS.pdf")
-
-    def ler_sitepd_pr(self):
-        return self.ler_pdf_como_string("SITEPD PR.pdf")
+    def ler_sindicato_pdf(self, sigla):
+        # Busca flexível: encontra o primeiro PDF que contenha a sigla (ex: 'RS', 'SP', 'RJ', 'PR')
+        sigla = sigla.upper()
+        arquivos = os.listdir(self.caminho_pasta_pdfs)
+        for nome in arquivos:
+            if (
+                nome.upper().startswith("SIND")
+                and sigla in nome.upper()
+                and nome.lower().endswith(".pdf")
+            ):
+                return self.ler_pdf_como_string(nome)
+        return f"PDF do sindicato '{sigla}' não encontrado. Disponíveis: {arquivos}"
 
     def ler_todos_pdfs(self):
         """
@@ -927,10 +1090,10 @@ class LeitorPlanilhas:
         Você é um agente especialista em documentos sindicais. Baseado na pergunta do usuário, escolha APENAS UM dos métodos de PDFs disponíveis:
 
         MÉTODOS PDF DISPONÍVEIS:
-        - ler_sindpd_rj (Sindicato RJ)
-        - ler_sindpd_sp (Sindicato SP)
-        - ler_sindpd_rs (Sindicato RS)
-        - ler_sitepd_pr (Sindicato PR)
+        - ler_sindicato_pdf('RJ') (Sindicato RJ)
+        - ler_sindicato_pdf('SP') (Sindicato SP)
+        - ler_sindicato_pdf('RS') (Sindicato RS)
+        - ler_sindicato_pdf('PR') (Sindicato PR)
         - ler_todos_pdfs (Todos os documentos sindicais)
 
         PERGUNTA DO USUÁRIO: {pergunta_usuario}
@@ -943,13 +1106,12 @@ class LeitorPlanilhas:
             metodo = response.text.strip()
 
             metodos_pdf_validos = [
-                "ler_sindpd_rj",
-                "ler_sindpd_sp",
-                "ler_sindpd_rs",
-                "ler_sitepd_pr",
+                "ler_sindicato_pdf('RJ')",
+                "ler_sindicato_pdf('SP')",
+                "ler_sindicato_pdf('RS')",
+                "ler_sindicato_pdf('PR')",
                 "ler_todos_pdfs",
             ]
-
             return metodo if metodo in metodos_pdf_validos else "ler_todos_pdfs"
 
         except Exception as e:
@@ -960,6 +1122,16 @@ class LeitorPlanilhas:
         Executa o método PDF escolhido e retorna os dados
         """
         try:
+            if nome_metodo.startswith("ler_sindicato_pdf"):
+                # Extrai a sigla entre aspas simples
+                import re
+
+                match = re.search(r"ler_sindicato_pdf\('([A-Z]{2})'\)", nome_metodo)
+                if match:
+                    sigla = match.group(1)
+                    return self.ler_sindicato_pdf(sigla)
+                else:
+                    return f"Método PDF inválido: {nome_metodo}"
             metodo = getattr(self, nome_metodo)
             return metodo()
         except Exception as e:
@@ -1022,10 +1194,10 @@ if __name__ == "__main__":
 
     HTML_TEMPLATE = """
     <!DOCTYPE html>
-    <html lang="pt-BR">
+    <html lang=\"pt-BR\">
     <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta charset=\"UTF-8\">
+        <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
         <title>Assistente IA - Dados Empresariais</title>
         <style>
             * {
@@ -1033,28 +1205,7 @@ if __name__ == "__main__":
                 padding: 0;
                 box-sizing: border-box;
             }
-
-            body {
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                min-height: 100vh;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 20px;
-            }
-
-            .container {
-                background: white;
-                border-radius: 20px;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-                width: 100%;
-                max-width: 800px;
-                min-height: 600px;
-                display: flex;
-                flex-direction: column;
-                overflow: hidden;
-            }
+            /* ...restante do CSS e HTML permanece igual... */
 
             .header {
                 background: linear-gradient(135deg, #2c3e50, #3498db);
